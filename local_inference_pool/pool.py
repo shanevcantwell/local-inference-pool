@@ -29,16 +29,16 @@ class ServerPool:
         }
         self.resource_available = asyncio.Event()
 
-    async def refresh_all_manifests(self) -> None:
+    async def refresh_all_manifests(self, headers: dict | None = None) -> None:
         """Fetch model lists from all servers."""
-        tasks = [self._refresh_manifest(url) for url in self.servers]
+        tasks = [self._refresh_manifest(url, headers=headers) for url in self.servers]
         await asyncio.gather(*tasks, return_exceptions=True)
 
-    async def _refresh_manifest(self, server_url: str) -> None:
+    async def _refresh_manifest(self, server_url: str, headers: dict | None = None) -> None:
         """Fetch model list from a single server."""
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
-                response = await client.get(f"{server_url}/v1/models")
+                response = await client.get(f"{server_url}/v1/models", headers=headers)
                 response.raise_for_status()
                 data = response.json()
                 model_ids = [m["id"] for m in data.get("data", [])]

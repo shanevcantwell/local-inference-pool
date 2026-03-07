@@ -46,6 +46,45 @@ class TestManifestRefresh:
 
     @pytest.mark.asyncio
     @respx.mock
+    async def test_refresh_forwards_headers(self, two_server_pool):
+        route0 = respx.get("http://server0:1234/v1/models").mock(
+            return_value=httpx.Response(
+                200, json=models_response(["modelA"])
+            )
+        )
+        route1 = respx.get("http://server1:1234/v1/models").mock(
+            return_value=httpx.Response(
+                200, json=models_response(["modelB"])
+            )
+        )
+
+        headers = {"Authorization": "Bearer test-key"}
+        await two_server_pool.refresh_all_manifests(headers=headers)
+
+        assert route0.calls[0].request.headers["Authorization"] == "Bearer test-key"
+        assert route1.calls[0].request.headers["Authorization"] == "Bearer test-key"
+        assert two_server_pool.get_all_available_models() == {"modelA", "modelB"}
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_refresh_without_headers_sends_no_auth(self, two_server_pool):
+        route = respx.get("http://server0:1234/v1/models").mock(
+            return_value=httpx.Response(
+                200, json=models_response(["modelA"])
+            )
+        )
+        respx.get("http://server1:1234/v1/models").mock(
+            return_value=httpx.Response(
+                200, json=models_response([])
+            )
+        )
+
+        await two_server_pool.refresh_all_manifests()
+
+        assert "Authorization" not in route.calls[0].request.headers
+
+    @pytest.mark.asyncio
+    @respx.mock
     async def test_unreachable_server_clears_models(self, two_server_pool):
         respx.get("http://server0:1234/v1/models").mock(
             side_effect=httpx.ConnectError("Connection refused")
