@@ -4,13 +4,13 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "local-inference-pool"
-version = "0.5.0"
+version = "0.6.0"
 description = "Multi-server GPU slot management for OpenAI-compatible inference backends"
 readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"
 authors = [
-    {name = "Shane Cantwell"}
+    {name = "Shane V Cantwell"}
 ]
 
 dependencies = [

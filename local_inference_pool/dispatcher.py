@@ -155,3 +155,10 @@ class ConcurrentDispatcher:
                         p.cancel()
         except Exception as e:
             logger.error(f"Dispatcher loop crashed: {e}", exc_info=True)
+        finally:
+            while self._queue:
+                task = self._queue.popleft()
+                if not task.future.done():
+                    task.future.set_exception(
+                        RuntimeError("Dispatcher loop stopped")
+                    )

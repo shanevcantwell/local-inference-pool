@@ -131,6 +131,24 @@ class ServerPool:
             )
             self.resource_available.set()
 
+    def report_server_error(self, server_url: str, error: str) -> None:
+        """Mark a server as dead after a consumer-side failure.
+
+        Clears available models, stores the error, releases the slot,
+        and notifies the dispatcher so it stops handing out this server.
+        """
+        if server_url in self.servers:
+            server = self.servers[server_url]
+            server.available_models = []
+            server.last_refresh_error = error
+            server.active_requests = max(0, server.active_requests - 1)
+            if server.active_requests == 0:
+                server.current_model = None
+            logger.warning(
+                f"Server {server_url} reported dead: {error}"
+            )
+            self.resource_available.set()
+
     def set_max_concurrent(self, max_concurrent: int) -> None:
         """Update max concurrent slots for all servers."""
         for server in self.servers.values():

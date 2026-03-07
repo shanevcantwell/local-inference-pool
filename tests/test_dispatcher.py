@@ -273,3 +273,37 @@ class TestTimeout:
 
         # Cleanup
         pool.release_server(url2)
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Dispatcher loop crash
+# ─────────────────────────────────────────────────────────────────────
+
+
+class TestDispatcherLoopCrash:
+    @pytest.mark.asyncio
+    async def test_queued_tasks_get_exception_on_crash(self):
+        """If the dispatcher loop crashes, pending futures get RuntimeError."""
+        pool = ServerPool(["http://server0:1234"])
+        pool.servers["http://server0:1234"].available_models = ["modelA"]
+        dispatcher = ConcurrentDispatcher(pool)
+
+        # Fill the only slot
+        url = await dispatcher.submit("modelA")
+
+        # Submit a second request that will queue
+        wait_task = asyncio.create_task(dispatcher.submit("modelA", timeout=5.0))
+        await asyncio.sleep(0.05)
+        assert not wait_task.done()
+
+        # Kill the dispatcher loop
+        dispatcher._dispatcher_task.cancel()
+        await asyncio.sleep(0.1)
+
+        # The queued task should have received a RuntimeError
+        assert wait_task.done()
+        with pytest.raises(RuntimeError, match="Dispatcher loop stopped"):
+            wait_task.result()
+
+        # Cleanup
+        pool.release_server(url)

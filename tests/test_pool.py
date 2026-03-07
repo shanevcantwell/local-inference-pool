@@ -313,3 +313,43 @@ class TestSetMaxConcurrent:
         two_server_pool.set_max_concurrent(0)
         for server in two_server_pool.servers.values():
             assert server.max_concurrent == 1
+
+
+# ─────────────────────────────────────────────────────────────────────
+# report_server_error
+# ─────────────────────────────────────────────────────────────────────
+
+
+class TestReportServerError:
+    def test_clears_models_and_stores_error(self, two_server_pool):
+        pool = two_server_pool
+        pool.servers["http://server0:1234"].available_models = ["modelA"]
+        pool.servers["http://server0:1234"].active_requests = 1
+        pool.servers["http://server0:1234"].current_model = "modelA"
+
+        pool.report_server_error("http://server0:1234", "Connection refused")
+
+        server = pool.servers["http://server0:1234"]
+        assert server.available_models == []
+        assert server.last_refresh_error == "Connection refused"
+        assert server.active_requests == 0
+        assert server.current_model is None
+
+    def test_does_not_affect_other_servers(self, two_server_pool):
+        pool = two_server_pool
+        pool.servers["http://server0:1234"].available_models = ["modelA"]
+        pool.servers["http://server1:1234"].available_models = ["modelB"]
+
+        pool.report_server_error("http://server0:1234", "Connection refused")
+
+        assert pool.servers["http://server1:1234"].available_models == ["modelB"]
+        assert pool.servers["http://server1:1234"].last_refresh_error is None
+
+    def test_server_stops_being_acquired(self, two_server_pool):
+        pool = two_server_pool
+        pool.servers["http://server0:1234"].available_models = ["modelA"]
+        pool.servers["http://server1:1234"].available_models = []
+
+        pool.report_server_error("http://server0:1234", "Connection refused")
+
+        assert pool.find_and_acquire("modelA") is None
