@@ -10,10 +10,18 @@ Public API:
 from local_inference_pool.config import ServerConfig
 from local_inference_pool.pool import ServerPool
 from local_inference_pool.dispatcher import ConcurrentDispatcher, InferenceTask
+from local_inference_pool.exceptions import (
+    DispatcherTimeoutError,
+    ModelNotAvailableError,
+    NoModelsAvailableError,
+)
 
 __all__ = [
     "ServerPool",
     "ConcurrentDispatcher",
     "ServerConfig",
     "InferenceTask",
+    "DispatcherTimeoutError",
+    "ModelNotAvailableError",
+    "NoModelsAvailableError",
 ]
