@@ -8,6 +8,14 @@ import respx
 from local_inference_pool import ServerPool, ServerConfig
 
 
+def _pool_with_keys():
+    """Pool with two servers, each with an API key."""
+    return ServerPool([
+        ServerConfig(url="http://server0:1234", api_key="key-a"),
+        ServerConfig(url="http://server1:1234", api_key="key-b"),
+    ])
+
+
 @pytest.fixture
 def two_server_pool():
     """Pool with two servers."""
@@ -46,7 +54,9 @@ class TestManifestRefresh:
 
     @pytest.mark.asyncio
     @respx.mock
-    async def test_refresh_forwards_headers(self, two_server_pool):
+    async def test_refresh_uses_per_server_api_key(self):
+        pool = _pool_with_keys()
+
         route0 = respx.get("http://server0:1234/v1/models").mock(
             return_value=httpx.Response(
                 200, json=models_response(["modelA"])
@@ -58,16 +68,15 @@ class TestManifestRefresh:
             )
         )
 
-        headers = {"Authorization": "Bearer test-key"}
-        await two_server_pool.refresh_all_manifests(headers=headers)
+        await pool.refresh_all_manifests()
 
-        assert route0.calls[0].request.headers["Authorization"] == "Bearer test-key"
-        assert route1.calls[0].request.headers["Authorization"] == "Bearer test-key"
-        assert two_server_pool.get_all_available_models() == {"modelA", "modelB"}
+        assert route0.calls[0].request.headers["Authorization"] == "Bearer key-a"
+        assert route1.calls[0].request.headers["Authorization"] == "Bearer key-b"
+        assert pool.get_all_available_models() == {"modelA", "modelB"}
 
     @pytest.mark.asyncio
     @respx.mock
-    async def test_refresh_without_headers_sends_no_auth(self, two_server_pool):
+    async def test_refresh_without_api_key_sends_no_auth(self, two_server_pool):
         route = respx.get("http://server0:1234/v1/models").mock(
             return_value=httpx.Response(
                 200, json=models_response(["modelA"])

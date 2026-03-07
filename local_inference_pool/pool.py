@@ -23,20 +23,29 @@ class ServerPool:
     preventing JIT model swaps from killing in-flight streams.
     """
 
-    def __init__(self, server_urls: list[str]):
-        self.servers: dict[str, ServerConfig] = {
-            url: ServerConfig(url=url) for url in server_urls
-        }
+    def __init__(self, servers: list[str | ServerConfig]):
+        self.servers: dict[str, ServerConfig] = {}
+        for entry in servers:
+            if isinstance(entry, str):
+                config = ServerConfig(url=entry)
+            else:
+                config = entry
+            self.servers[config.url] = config
         self.resource_available = asyncio.Event()
 
-    async def refresh_all_manifests(self, headers: dict | None = None) -> None:
+    async def refresh_all_manifests(self) -> None:
         """Fetch model lists from all servers."""
-        tasks = [self._refresh_manifest(url, headers=headers) for url in self.servers]
+        tasks = [self._refresh_manifest(url) for url in self.servers]
         await asyncio.gather(*tasks, return_exceptions=True)
 
-    async def _refresh_manifest(self, server_url: str, headers: dict | None = None) -> None:
+    async def _refresh_manifest(self, server_url: str) -> None:
         """Fetch model list from a single server."""
         server = self.servers[server_url]
+        headers = (
+            {"Authorization": f"Bearer {server.api_key}"}
+            if server.api_key
+            else None
+        )
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
                 response = await client.get(f"{server_url}/v1/models", headers=headers)
