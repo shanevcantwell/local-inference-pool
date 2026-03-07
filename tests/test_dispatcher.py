@@ -3,7 +3,12 @@
 import asyncio
 import pytest
 
-from local_inference_pool import ServerPool, ConcurrentDispatcher
+from local_inference_pool import (
+    ServerPool,
+    ConcurrentDispatcher,
+    NoModelsAvailableError,
+    ModelNotAvailableError,
+)
 
 
 @pytest.fixture
@@ -174,3 +179,35 @@ class TestHeadOfLineBlocking:
             pass
         pool.release_server(url_a)
         pool.release_server(url_b)
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Fail-fast
+# ─────────────────────────────────────────────────────────────────────
+
+
+class TestFailFast:
+    @pytest.mark.asyncio
+    async def test_submit_raises_when_no_models_available(self):
+        pool = ServerPool(["http://server0:1234"])
+        dispatcher = ConcurrentDispatcher(pool)
+
+        with pytest.raises(NoModelsAvailableError):
+            await dispatcher.submit("modelA")
+
+    @pytest.mark.asyncio
+    async def test_submit_raises_with_error_context(self):
+        pool = ServerPool(["http://server0:1234", "http://server1:1234"])
+        pool.servers["http://server0:1234"].last_refresh_error = "HTTP 401"
+        pool.servers["http://server1:1234"].last_refresh_error = "Connection refused"
+        dispatcher = ConcurrentDispatcher(pool)
+
+        with pytest.raises(NoModelsAvailableError, match="HTTP 401"):
+            await dispatcher.submit("modelA")
+
+    @pytest.mark.asyncio
+    async def test_submit_raises_for_unknown_model(self, pool_with_models):
+        dispatcher = ConcurrentDispatcher(pool_with_models)
+
+        with pytest.raises(ModelNotAvailableError):
+            await dispatcher.submit("nonexistent")

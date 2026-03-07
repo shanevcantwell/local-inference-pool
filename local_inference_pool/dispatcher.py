@@ -9,6 +9,10 @@ import collections
 import logging
 from dataclasses import dataclass, field
 
+from local_inference_pool.exceptions import (
+    ModelNotAvailableError,
+    NoModelsAvailableError,
+)
 from local_inference_pool.pool import ServerPool
 
 logger = logging.getLogger(__name__)
@@ -42,6 +46,22 @@ class ConcurrentDispatcher:
         Returns the acquired server_url.
         """
         logger.info(f"Dispatcher.submit: model={model_id}")
+
+        all_models = self.pool.get_all_available_models()
+        if not all_models:
+            errors = {
+                s.last_refresh_error
+                for s in self.pool.servers.values()
+                if s.last_refresh_error
+            }
+            detail = "; ".join(sorted(errors)) if errors else "unknown"
+            raise NoModelsAvailableError(
+                f"No models available from any server ({detail})"
+            )
+        if model_id not in all_models:
+            raise ModelNotAvailableError(
+                f"Model '{model_id}' not available on any server"
+            )
 
         if self._dispatcher_task is None or self._dispatcher_task.done():
             self._dispatcher_task = asyncio.create_task(
