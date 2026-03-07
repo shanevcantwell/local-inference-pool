@@ -17,6 +17,7 @@ class ServerConfig(BaseModel):
     active_requests: int = 0
     max_concurrent: int = 1
     current_model: Optional[str] = None
+    last_refresh_error: Optional[str] = None
 
     @property
     def is_busy(self) -> bool:

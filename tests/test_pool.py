@@ -85,6 +85,59 @@ class TestManifestRefresh:
 
     @pytest.mark.asyncio
     @respx.mock
+    async def test_refresh_stores_error_on_401(self, two_server_pool):
+        respx.get("http://server0:1234/v1/models").mock(
+            return_value=httpx.Response(401)
+        )
+        respx.get("http://server1:1234/v1/models").mock(
+            return_value=httpx.Response(401)
+        )
+
+        await two_server_pool.refresh_all_manifests()
+
+        for server in two_server_pool.servers.values():
+            assert server.last_refresh_error == "HTTP 401"
+            assert server.available_models == []
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_refresh_stores_error_on_connection_failure(self, two_server_pool):
+        respx.get("http://server0:1234/v1/models").mock(
+            side_effect=httpx.ConnectError("Connection refused")
+        )
+        respx.get("http://server1:1234/v1/models").mock(
+            return_value=httpx.Response(
+                200, json=models_response(["modelA"])
+            )
+        )
+
+        await two_server_pool.refresh_all_manifests()
+
+        assert two_server_pool.servers["http://server0:1234"].last_refresh_error is not None
+        assert two_server_pool.servers["http://server1:1234"].last_refresh_error is None
+
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_refresh_clears_error_on_success(self, two_server_pool):
+        two_server_pool.servers["http://server0:1234"].last_refresh_error = "HTTP 401"
+
+        respx.get("http://server0:1234/v1/models").mock(
+            return_value=httpx.Response(
+                200, json=models_response(["modelA"])
+            )
+        )
+        respx.get("http://server1:1234/v1/models").mock(
+            return_value=httpx.Response(
+                200, json=models_response([])
+            )
+        )
+
+        await two_server_pool.refresh_all_manifests()
+
+        assert two_server_pool.servers["http://server0:1234"].last_refresh_error is None
+
+    @pytest.mark.asyncio
+    @respx.mock
     async def test_unreachable_server_clears_models(self, two_server_pool):
         respx.get("http://server0:1234/v1/models").mock(
             side_effect=httpx.ConnectError("Connection refused")

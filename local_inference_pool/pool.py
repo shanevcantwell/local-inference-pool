@@ -36,19 +36,26 @@ class ServerPool:
 
     async def _refresh_manifest(self, server_url: str, headers: dict | None = None) -> None:
         """Fetch model list from a single server."""
+        server = self.servers[server_url]
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
                 response = await client.get(f"{server_url}/v1/models", headers=headers)
                 response.raise_for_status()
                 data = response.json()
                 model_ids = [m["id"] for m in data.get("data", [])]
-                self.servers[server_url].available_models = model_ids
+                server.available_models = model_ids
+                server.last_refresh_error = None
                 logger.info(
                     f"Manifest refresh: {server_url} has models: {model_ids}"
                 )
+        except httpx.HTTPStatusError as e:
+            server.last_refresh_error = f"HTTP {e.response.status_code}"
+            logger.error(f"Manifest refresh FAILED for {server_url}: {server.last_refresh_error}")
+            server.available_models = []
         except Exception as e:
+            server.last_refresh_error = str(e)
             logger.error(f"Manifest refresh FAILED for {server_url}: {e}")
-            self.servers[server_url].available_models = []
+            server.available_models = []
 
     def get_all_available_models(self) -> set[str]:
         """Return union of all models across all servers."""
