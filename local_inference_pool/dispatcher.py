@@ -10,6 +10,7 @@ import logging
 from dataclasses import dataclass, field
 
 from local_inference_pool.exceptions import (
+    DispatcherTimeoutError,
     ModelNotAvailableError,
     NoModelsAvailableError,
 )
@@ -40,10 +41,21 @@ class ConcurrentDispatcher:
         self._state_changed = asyncio.Event()
         self._dispatcher_task = None
 
-    async def submit(self, model_id: str) -> str:
+    def _cleanup_future(self, future: asyncio.Future[str]) -> None:
+        """Release server if acquired during a race with cancellation/timeout."""
+        if future.done() and not future.cancelled():
+            try:
+                self.pool.release_server(future.result())
+            except Exception:
+                pass
+        if not future.done():
+            future.cancel()
+
+    async def submit(self, model_id: str, timeout: float | None = 60.0) -> str:
         """Submit a request and wait for a server to be acquired.
 
         Returns the acquired server_url.
+        Raises DispatcherTimeoutError if timeout (seconds) is exceeded.
         """
         logger.info(f"Dispatcher.submit: model={model_id}")
 
@@ -75,19 +87,14 @@ class ConcurrentDispatcher:
         self._state_changed.set()
 
         try:
-            return await future
+            return await asyncio.wait_for(future, timeout=timeout)
+        except asyncio.TimeoutError:
+            self._cleanup_future(future)
+            raise DispatcherTimeoutError(
+                f"Timed out waiting for server slot for '{model_id}' ({timeout}s)"
+            ) from None
         except asyncio.CancelledError:
-            # Race condition safety: if we got a server just before cancellation,
-            # release it back to the pool.
-            if future.done() and not future.cancelled():
-                try:
-                    server_url = future.result()
-                    self.pool.release_server(server_url)
-                except Exception:
-                    pass
-
-            if not future.done():
-                future.cancel()
+            self._cleanup_future(future)
             raise
 
     async def _process_queue_loop(self) -> None:

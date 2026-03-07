@@ -6,6 +6,7 @@ import pytest
 from local_inference_pool import (
     ServerPool,
     ConcurrentDispatcher,
+    DispatcherTimeoutError,
     NoModelsAvailableError,
     ModelNotAvailableError,
 )
@@ -211,3 +212,53 @@ class TestFailFast:
 
         with pytest.raises(ModelNotAvailableError):
             await dispatcher.submit("nonexistent")
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Timeout
+# ─────────────────────────────────────────────────────────────────────
+
+
+class TestTimeout:
+    @pytest.mark.asyncio
+    async def test_submit_times_out(self, pool_with_models):
+        """Timeout raises DispatcherTimeoutError and releases any acquired slot."""
+        pool = pool_with_models
+        dispatcher = ConcurrentDispatcher(pool)
+
+        # Fill server0 (only server with modelA, max_concurrent=1)
+        url = await dispatcher.submit("modelA")
+        assert pool.servers[url].active_requests == 1
+
+        # Second modelA request should time out
+        with pytest.raises(DispatcherTimeoutError):
+            await dispatcher.submit("modelA", timeout=0.1)
+
+        # Original slot still held
+        assert pool.servers[url].active_requests == 1
+
+        # Cleanup
+        pool.release_server(url)
+
+    @pytest.mark.asyncio
+    async def test_submit_timeout_none_waits_indefinitely(self, pool_with_models):
+        """timeout=None disables the timeout — waits until server is released."""
+        pool = pool_with_models
+        dispatcher = ConcurrentDispatcher(pool)
+
+        # Fill server0
+        url1 = await dispatcher.submit("modelA")
+
+        # Submit with no timeout, release after a delay
+        async def release_later():
+            await asyncio.sleep(0.1)
+            pool.release_server(url1)
+
+        asyncio.create_task(release_later())
+        url2 = await asyncio.wait_for(
+            dispatcher.submit("modelA", timeout=None), timeout=2.0
+        )
+        assert url2 == "http://server0:1234"
+
+        # Cleanup
+        pool.release_server(url2)
