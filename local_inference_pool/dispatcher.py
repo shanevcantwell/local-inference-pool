@@ -71,9 +71,18 @@ class ConcurrentDispatcher:
                 f"No models available from any server ({detail})"
             )
         if model_id not in all_models:
-            raise ModelNotAvailableError(
-                f"Model '{model_id}' not available on any server"
-            )
+            failed = {
+                url: s.last_refresh_error
+                for url, s in self.pool.servers.items()
+                if s.last_refresh_error
+            }
+            parts = [f"Model '{model_id}' not available on any server"]
+            parts.append(f"available: {sorted(all_models)}")
+            if failed:
+                parts.append(
+                    f"servers with errors: {failed}"
+                )
+            raise ModelNotAvailableError("; ".join(parts))
 
         if self._dispatcher_task is None or self._dispatcher_task.done():
             self._dispatcher_task = asyncio.create_task(

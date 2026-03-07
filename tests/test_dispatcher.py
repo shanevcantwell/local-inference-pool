@@ -213,6 +213,17 @@ class TestFailFast:
         with pytest.raises(ModelNotAvailableError):
             await dispatcher.submit("nonexistent")
 
+    @pytest.mark.asyncio
+    async def test_submit_includes_server_errors_for_unknown_model(self):
+        """When model is missing and servers have errors, error message includes server diagnostics."""
+        pool = ServerPool(["http://server0:1234", "http://server1:1234"])
+        pool.servers["http://server0:1234"].available_models = ["other-model"]
+        pool.servers["http://server1:1234"].last_refresh_error = "HTTP 401"
+        dispatcher = ConcurrentDispatcher(pool)
+
+        with pytest.raises(ModelNotAvailableError, match="HTTP 401"):
+            await dispatcher.submit("qwen3.5-9b")
+
 
 # ─────────────────────────────────────────────────────────────────────
 # Timeout
