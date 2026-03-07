@@ -77,7 +77,6 @@ class ConcurrentDispatcher:
                 if s.last_refresh_error
             }
             parts = [f"Model '{model_id}' not available on any server"]
-            parts.append(f"available: {sorted(all_models)}")
             if failed:
                 parts.append(
                     f"servers with errors: {failed}"
