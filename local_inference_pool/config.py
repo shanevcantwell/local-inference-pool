@@ -14,6 +14,7 @@ class ServerConfig(BaseModel):
 
     url: str
     api_key: Optional[str] = None
+    server_type: Optional[str] = None
     available_models: list[str] = []
     active_requests: int = 0
     max_concurrent: int = 1
