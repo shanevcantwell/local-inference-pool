@@ -1,3 +1,8 @@
+---
+handle: local-inference-pool
+related: [las, prompt-prix, call-economy]
+---
+
 # local-inference-pool
 
 Multi-server GPU slot management for OpenAI-compatible inference backends.
